@@ -63,10 +63,14 @@ flowchart LR
 ## Install
 
 ```sh
+# npm
+dsh plugin --profile web add dsh-browser-panel
+
+# straight from GitHub
 dsh plugin --profile web add github:imroc/dsh-browser-panel
 ```
 
-The package ships its built JavaScript, so nothing is compiled on install. It is not on npm yet — use the GitHub path above.
+The package ships its built JavaScript, so nothing is compiled on install.
 
 Restart the Web UI afterwards (adding a plugin row is a boot-time composition change):
 
