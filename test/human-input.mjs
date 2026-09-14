@@ -53,7 +53,22 @@ console.log(
     `[canvas ${canvas.width.toFixed(0)}x${canvas.height.toFixed(0)}, viewport ${canvas.cw}x${canvas.ch}]`,
 )
 
-// 3) Real pointer events, so the panel's own handlers run (not a JS .click()).
+// 3) Regression guard: the canvas must be the topmost element at the target
+// point. An informational overlay without `pointer-events: none` silently eats
+// every click, which is exactly how "I can see the page but cannot click it"
+// happens.
+const topmost = await gui.page.evaluate(
+  `(() => { const el = document.elementFromPoint(${guiX}, ${guiY});
+    return JSON.stringify({ tag: el?.tagName, cls: el?.className, isCanvas: el?.tagName === 'CANVAS' }) })()`,
+)
+const hit = JSON.parse(topmost)
+if (hit.isCanvas !== true) {
+  console.error(`❌ canvas is covered at (${guiX},${guiY}) by <${hit.tag}> .${hit.cls} — clicks would never reach the page`)
+  process.exit(1)
+}
+console.log(`topmost element at (${guiX},${guiY}): <${hit.tag}> ✓`)
+
+// 4) Real pointer events, so the panel's own handlers run (not a JS .click()).
 for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
   await gui.page.send('Input.dispatchMouseEvent', {
     type,
@@ -67,11 +82,11 @@ for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
 }
 await new Promise((resolve) => setTimeout(resolve, 400))
 
-// 4) Type: focus sits on the panel's keyboard sink, whose input event is forwarded.
+// 5) Type: focus sits on the panel's keyboard sink, whose input event is forwarded.
 await gui.page.send('Input.insertText', { text: 'human-user' })
 await new Promise((resolve) => setTimeout(resolve, 600))
 
-// 5) Verify in the shared browser.
+// 6) Verify in the shared browser.
 const typed = await shared.page.evaluate(`document.querySelector('input[name=user]').value`)
 const focused = await shared.page.evaluate(`document.activeElement && document.activeElement.name`)
 console.log(`shared input value = ${JSON.stringify(typed)} (focused field: ${focused})`)
