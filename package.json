@@ -1,0 +1,56 @@
+{
+  "name": "dsh-browser-panel",
+  "version": "0.1.0",
+  "description": "A shared browser that lives in the DSH host: the AI drives it, and you watch or take over the same tab inside the DSH Web UI — logins, 2FA, QR codes and CAPTCHAs included.",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md"
+  ],
+  "engines": {
+    "node": ">=22.19"
+  },
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.1.5-rc.2"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "test": "node test/smoke.mjs"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "browser",
+    "remote-browser",
+    "cdp",
+    "chrome-devtools-protocol",
+    "agent-tools",
+    "human-in-the-loop"
+  ],
+  "author": "roc <i@roc.im>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imroc/dsh-browser-panel.git"
+  },
+  "homepage": "https://github.com/imroc/dsh-browser-panel#readme",
+  "bugs": {
+    "url": "https://github.com/imroc/dsh-browser-panel/issues"
+  }
+}
