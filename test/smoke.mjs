@@ -215,6 +215,20 @@ try {
   await sleep(1500)
   check('stream survives a panel reconnect race', secondFrames.length > framesBeforeNav, `${framesBeforeNav} -> ${secondFrames.length} frames`)
 
+  // Chrome silently drops injected input for a background tab, so the manager
+  // must keep its own page in the foreground even when another tab appears.
+  const intruder = await manager.cdp.newPage('about:blank')
+  await sleep(400)
+  const hiddenBefore = await manager.page.evaluate('document.visibilityState')
+  await hub.pushState()
+  await sleep(500)
+  const visibleAfter = await manager.page.evaluate('document.visibilityState')
+  check('shared page is kept as the active tab', hiddenBefore === 'hidden' && visibleAfter === 'visible', `${hiddenBefore} -> ${visibleAfter}`)
+  await manager.cdp.closeTarget(intruder.targetId)
+  await sleep(300)
+  await manager.ensureActive()
+  await sleep(200)
+
   // ------------------------------------------------------- human handover
   const asked = human.ask('请在面板里完成登录', { timeoutMs: 5000 })
   await sleep(200)
