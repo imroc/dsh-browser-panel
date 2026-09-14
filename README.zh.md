@@ -63,12 +63,10 @@ flowchart LR
 ## 安装
 
 ```sh
-# npm
-dsh plugin --profile web add dsh-browser-panel
-
-# 直接从 GitHub
 dsh plugin --profile web add github:imroc/dsh-browser-panel
 ```
+
+包里带的是已构建好的 JavaScript，安装时不需要编译。**尚未发布到 npm**，请用上面的 GitHub 路径。
 
 装完需要重启 Web UI（新增插件行属于启动期组合变更）：
 
