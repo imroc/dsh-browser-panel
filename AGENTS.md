@@ -18,9 +18,18 @@ lib/routes.js       /api/dsh-browser-panel routes (session-scoped ones carry a s
                     plus the host-level /sessions and /health) and the stream upgrade
 lib/tools.js        the ten model-facing tools, each bound to its calling session
 lib/client.js       browser half: the session view tab + the sidebar overview (no build step)
-test/smoke.mjs      36-check standalone core test — no DSH needed
+test/smoke.mjs      43-check standalone core test — no DSH needed
 test/human-input.mjs real pointer/keyboard events into the panel canvas, verified in the page
 cordis.patch.yml    bundle layer: inserts the plugin row (id: browser-panel)
+```
+
+Repository documents:
+
+```
+README.md / README.zh.md   user-facing documentation (bilingual, kept in lockstep)
+references/DESIGN.md       why the architecture is what it is
+references/PITFALLS.md     every measured trap, with the evidence
+references/RELEASING.md    the release pipeline: tag + GitHub release + npm, and how to verify each
 ```
 
 ## Development loop
@@ -30,7 +39,7 @@ node test/smoke.mjs        # core: per-session tabs, CDP ops, real input, stream
 node --check lib/client.js # the client half has no build step; syntax-check it
 ```
 
-- `test/smoke.mjs` drives a **real Chrome** (found the same way the plugin finds it: `browserPath`, `PATH`, then the Playwright/Puppeteer caches; Xvfb is optional) and needs no DSH. Its 36 checks are the definition of "the per-session model still holds": two sessions get two tabs, the tabs do not steer each other, a click-then-type really lands in the field (the focus gate), panel input reaches **its own** session only, the watched session owns the screencast while the other is served by polled frames, a panel reconnect does not kill the next stream, one activation makes a never-activated target accept input, two sessions can wait on a human at the same time, and a login survives a browser restart.
+- `test/smoke.mjs` drives a **real Chrome** (found the same way the plugin finds it: `browserPath`, `PATH`, then the Playwright/Puppeteer caches; Xvfb is optional) and needs no DSH. Its 43 checks are the definition of "the per-session model still holds": two sessions get two tabs, the tabs do not steer each other, a click-then-type really lands in the field (the focus gate), panel input reaches **its own** session only, the watched session owns the screencast while the other is served by polled frames, a panel reconnect does not kill the next stream, one activation makes a never-activated target accept input, two sessions can wait on a human at the same time, and a login survives a browser restart.
 - **Host half changes need a DSH restart** (`bundle` rows are a boot-time composition change, and Cordis' cascaded loader caches modules — editing a linked plugin's `lib/*.js` does *not* hot-reload). On this machine use `~/dev/agents/dsh-agent/scripts/restart-dsh-web-when-idle.sh` (systemd-run, wait-for-idle, `--wake` yourself).
 - **Client half changes only need a page refresh**, but the served bundle carries a `rev` — if the rev does not change, restart the instance.
 - A plugin row can be hot-inserted through the *profile patch file* (`~/.dsh/profiles/<profile>/cordis.patch.yml`, `patchReload: live`), which is handy for iterating on a live GUI without a restart. Watch for duplicate rows if the package is also in `dsh.profile.bundles`.
@@ -50,6 +59,10 @@ node --check lib/client.js # the client half has no build step; syntax-check it
 11. Tools take their session from `exec.agent.id` inside the handler (`sessionOf`). Never add a `sessionId` tool parameter, and never fall back to a host-wide page: a call without an owning session is an error.
 12. Session-scoped routes must carry a session id (`/state?session=…`, the `/stream?session=…` upgrade, `POST /open|/close` with `sessionId` in the body); the host-level ones (`/sessions`, `/health`, `POST /human-done`) describe every session or settle a request by id, and must not invent one. Every route and the upgrade run `connection.requestRejection`.
 13. The profile — and therefore the identity — is shared by every session **on purpose**; per-session isolation covers page state only. Do not "fix" cross-session cookie sharing.
+
+## Releasing
+
+Cutting a version means a **git tag + a GitHub release + an npm version that all point at the same code**, in that order, with the published tarball verified afterwards. The full pipeline — pre-flight, bump rules, release-note format, registry-lag checks, the throwaway-`DSH_HOME` install check, and what this repository deliberately does not have — lives in `references/RELEASING.md`. Read it before touching `version` in `package.json`; never retag or republish a version.
 
 ## House rules
 
