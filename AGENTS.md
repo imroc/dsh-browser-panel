@@ -14,7 +14,8 @@ lib/ws.js           dependency-free RFC 6455 server (one upgrade route)
 lib/screencast.js   per-session stream hub: which tab owns the screencast, pollers for the
                     rest, and input replay into the panel's own session
 lib/human.js        the ask-human broker (one pending request per session, timeout, resume)
-lib/routes.js       /api/dsh-browser-panel routes (all session-scoped) + the stream upgrade
+lib/routes.js       /api/dsh-browser-panel routes (session-scoped ones carry a session id,
+                    plus the host-level /sessions and /health) and the stream upgrade
 lib/tools.js        the ten model-facing tools, each bound to its calling session
 lib/client.js       browser half: the session view tab + the sidebar overview (no build step)
 test/smoke.mjs      36-check standalone core test — no DSH needed
@@ -47,7 +48,7 @@ node --check lib/client.js # the client half has no build step; syntax-check it
 9. Only the **hub** decides which tab is in front, and only because Chrome streams the active tab alone (#13). The AI path must never activate a tab for its own convenience: a session's tab accepts injected input while it is in the background.
 10. The panel component's mount/unmount **is** the focus protocol; unmounting hands the foreground back and must never close the tab. A tab belongs to the session, not to the panel.
 11. Tools take their session from `exec.agent.id` inside the handler (`sessionOf`). Never add a `sessionId` tool parameter, and never fall back to a host-wide page: a call without an owning session is an error.
-12. Every HTTP route and the stream upgrade carry a session id, and every route runs `connection.requestRejection`. A new route without either is a bug.
+12. Session-scoped routes must carry a session id (`/state?session=…`, the `/stream?session=…` upgrade, `POST /open|/close` with `sessionId` in the body); the host-level ones (`/sessions`, `/health`, `POST /human-done`) describe every session or settle a request by id, and must not invent one. Every route and the upgrade run `connection.requestRejection`.
 13. The profile — and therefore the identity — is shared by every session **on purpose**; per-session isolation covers page state only. Do not "fix" cross-session cookie sharing.
 
 ## House rules

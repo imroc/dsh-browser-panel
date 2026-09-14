@@ -56,7 +56,7 @@ flowchart LR
 - 每个标签页在创建时**只激活一次**。一个从未被激活过的 Chrome target 会在余生里静默丢弃每一次注入的输入事件，而激活一次即可永久修复；此后即使标签页在后台，注入的输入也照样生效——所以 AI 永远不会抢你的前台。
 - Chrome 只为**当前活动标签页**推流。你正在看的那个面板会发 `focus`，由它独占真正的 `Page.startScreencast`；其余已连接的会话由轮询的 `Page.captureScreenshot` 供帧（目标约 7fps；当别的标签页占着 screencast 时，它的第一帧可能很慢，要几秒）。新打开的面板总会先补种一帧，因为静态页面自己不会产生任何帧。
 - 工具不带 session 参数：每个 handler 从自己的执行上下文（`exec.agent.id`）读会话 id，所以工具名与参数保持简单，会话之间也永远不可能互相操作对方的标签页。没有归属会话的调用直接报错。
-- 面板由宿主 webserver 提供，与 Web UI **同源、同一套会话认证**（`connection.requestRejection`）。所有路由都带 session id：`GET /api/dsh-browser-panel/state?session=…`、`GET /sessions`、`POST /open|/close|/human-done`、`GET /health`，以及 `/stream?session=…` 这个 WebSocket upgrade。不需要额外端口、额外 token 或隧道。
+- 面板由宿主 webserver 提供，与 Web UI **同源、同一套会话认证**（`connection.requestRejection`）。属于某个会话的路由带上它的 id——`GET /api/dsh-browser-panel/state?session=…`、`POST /open|/close`（session 在 body 里）、以及 `/stream?session=…` 这个 WebSocket upgrade；`GET /sessions` 与 `GET /health` 描述整个宿主，`POST /human-done` 按 request id 结算。不需要额外端口、额外 token 或隧道。
 - 人类接管是按会话的：两个会话可以同时等人，请求只会送到它自己那个会话的面板。
 - 画面以 JPEG 走一条 WebSocket，输入以小 JSON 消息回传；连接跟不上时**丢帧而不是排队**。
 - 不往 DSH 核心里写任何东西：插件就是组合树里的一行。
@@ -147,7 +147,7 @@ systemctl --user restart dsh-web      # 或你启动 `dsh web` 的方式
 
 - 面板及其 WebSocket 与 DSH Web UI **同一套认证**。能看到面板的人，本来就能操作宿主浏览器——请按这个标准看待 Web UI 的访问控制。
 - 会话之间隔离的是页面状态，**不是身份**：所有会话共用同一个浏览器 profile，也就共用同一批 cookie 与登录态。这正是插件的意义所在，但同时也意味着某个会话的 AI 能够访问 profile 已登录的任何站点。
-- profile 里是真实会话。它只留在宿主上（DSH home 之下），不会上传，也不在 Git 仓库里。
+- profile 里是真实会话。它只留在宿主上（DSH home 目录下），不会上传，也不在 Git 仓库里。
 - 浏览器流量从容器出去。数据中心 IP 比你的笔记本更"像机器人"；对付严格的站点，`mode: headed`（有 Xvfb 时的默认值）是这点上更划算的一半。
 - 尽量用非 root 用户跑 Chrome 并保留沙箱；插件只在宿主进程是 root 时才自动补 `--no-sandbox`。
 

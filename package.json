@@ -1,7 +1,7 @@
 {
   "name": "dsh-browser-panel",
   "version": "0.2.0",
-  "description": "A shared browser that lives in the DSH host: the AI drives it, and you watch or take over the same tab inside the DSH Web UI — logins, 2FA, QR codes and CAPTCHAs included.",
+  "description": "A browser that lives in the DSH host: every session gets its own tab, the AI drives it, and you watch or take over that same tab inside the DSH Web UI — logins, 2FA, QR codes and CAPTCHAs included.",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",

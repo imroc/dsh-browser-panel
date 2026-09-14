@@ -12,7 +12,7 @@ Three shapes were on the table once the plugin had to serve more than one conver
 
 The plugin's core promise is unchanged and now precise: the session the human creates *is* the session the AI uses, and the isolation that sessions get is **page state**, not identity. Logging in once is the whole point, so the identity is deliberately shared; what a session must not share is the page it is standing on.
 
-Per-tab isolation is only possible because of a measured property of the browser, not by assumption: a target that has been activated once accepts injected input for the rest of its life, even while it is in the background (`references/PITFALLS.md` #11), and each tab gets its own renderer. Without #11's fix, a background session's tab would be deaf and the design would collapse back into "whoever is in front is the only usable session".
+Per-tab isolation is only possible because of a measured property of the browser, not by assumption: a target that has been activated once accepts injected input for the rest of its life, even while it is in the background (`references/PITFALLS.md` #11). Without #11's fix, a background session's tab would be deaf and the design would collapse back into "whoever is in front is the only usable session".
 
 ## Why every tab is activated once, at creation
 
@@ -30,7 +30,7 @@ Related and orthogonal (#12): text insertion is gated on the renderer having a *
 
 ## Why two picture paths: screencast for the watched tab, polling for the rest
 
-Measured (#13): Chrome only emits `Page.startScreencast` frames for the **active** tab. Over 10 s the active tab produced 34 distinct frames, a hidden tab running a continuously animating page produced **1**, and a never-activated tab produced **0**; two concurrent screencasts did not help (active 34, hidden 0). `Page.captureScreenshot` polling, by contrast, works on hidden *and* never-activated targets at roughly 130–150 ms per capture (~7 fps) with fresh content, and Chrome throttles timers in hidden tabs (~0.6–1 tick/s versus ~3.3), so "let every session keep its own screencast" is not a viable design.
+Measured (#13): Chrome only emits `Page.startScreencast` frames for the **active** tab. Over 10 s the active tab produced 34 distinct frames, a hidden tab running a continuously animating page produced **1**, and a never-activated tab produced **0**; two concurrent screencasts did not help (active 34, hidden 0). `Page.captureScreenshot` polling, by contrast, works on hidden *and* never-activated targets at roughly 130–150 ms per capture (~7 fps) with fresh content, and Chrome throttles timers in hidden tabs (~0.6–1 tick/s versus ~3.3 on the active tab), so "let every session keep its own screencast" is not a viable design.
 
 Hence the hub has exactly two paths:
 
@@ -51,7 +51,7 @@ The component's mount/unmount lifetime **is** the focus protocol:
 - unmounting sends `blur` and gives the foreground back to whoever else is watching;
 - unmounting **never closes the tab** — the browser belongs to the session, not to the panel. Leaving the tab is not closing the browser, exactly as leaving a conversation does not end it.
 
-The sidebar entry (`sidebar.panellist`) kept its place but changed its body. It is root-scoped, which is precisely right for a host-wide **overview**: one row per session tab (title, URL, last used, a 待接管 badge while that session waits for a person, and 结束并清理 per row). A keyed `main` entry is still required — `ctx.layout.selectPanel(id)` refuses an id without one — so `main` is registered as that overview rather than as a browser canvas. The old central canvas is gone; there is deliberately no "current browser" for the whole host.
+The sidebar entry (`sidebar.panellist`) kept its place but changed its body. It is root-scoped, which is precisely right for a host-wide **overview**: one row per session tab (title, URL, last used, a 待接管 / needs you badge while that session waits for a person, and 结束并清理 / Close tab per row). A keyed `main` entry is still required — `ctx.layout.selectPanel(id)` refuses an id without one — so `main` is registered as that overview rather than as a browser canvas. The old central canvas is gone; there is deliberately no "current browser" for the whole host.
 
 ## Why the tools carry no session parameter
 

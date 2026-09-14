@@ -32,10 +32,10 @@ It exists for one stubborn problem: agents run on machines with no display, but 
 Panel side (DSH Web UI):
 
 - a **浏览器 / Browser** tab in the session's view strip — the live view of *that* session's tab; every session shows its own;
-- the sidebar entry (browser glyph) is the host-wide **overview**: one row per session tab — title, URL, last used, a 待接管 badge while that session waits for a person, and 结束并清理 on each row;
+- the sidebar entry (browser glyph) is the host-wide **overview**: one row per session tab — title, URL, last used, a 待接管 / needs you badge while that session waits for a person, and 结束并清理 / Close tab on each row;
 - the canvas accepts your mouse, wheel, keyboard and IME input — it is not a screenshot viewer, the events are replayed into the very CDP session the AI uses;
 - the hand-over banner appears in the panel of **the session that asked**, with a 我已完成 / Done button that resumes the waiting tool call (and an optional note back to the AI);
-- a toolbar with back / forward / reload / repaint, Tab / ⇧Tab / Enter to walk a form without aiming the mouse, and 结束并清理.
+- a toolbar with back / forward / reload / repaint, Tab / ⇧Tab / Enter to walk a form without aiming the mouse, and 结束并清理 / Close tab.
 
 ## How it works
 
@@ -52,11 +52,11 @@ flowchart LR
 ```
 
 - The host half launches one Chrome per DSH host process. With `mode: auto` it runs **headed on a private Xvfb** when Xvfb is available (better fingerprint than headless) and falls back to `--headless=new` otherwise.
-- A session's tab is created **lazily** — on that session's first `browser_panel_*` call, or when the human opens the browser from that session's panel — and closed when the session is disposed, when the AI calls `browser_panel_close`, or when the human presses 结束并清理. Sessions are isolated in *page state*, not in identity: they share the profile, so a login performed once is available everywhere.
+- A session's tab is created **lazily** — on that session's first `browser_panel_*` call, or when the human opens the browser from that session's panel — and closed when the session is disposed, when the AI calls `browser_panel_close`, or when the human presses 结束并清理 / Close tab. Sessions are isolated in *page state*, not in identity: they share the profile, so a login performed once is available everywhere.
 - Every tab is **activated once** when it is created. A Chrome target that was never activated silently discards every injected input event for the rest of its life, and one activation repairs it permanently. Afterwards a session's tab accepts input even while it is in the background — so the AI never moves your foreground.
 - Chrome only emits screencast frames for the **active tab**. The panel you are actually looking at sends `focus` and owns the real `Page.startScreencast`; every other attached session is served by polled `Page.captureScreenshot` frames (~7 fps target; its first frame can be cold — seconds — while another tab owns the screencast). A freshly opened panel always gets a seeded frame, because a static page emits none on its own.
 - Tools carry no session parameter: every handler reads the session id from its own execution context (`exec.agent.id`), so tool names and parameters stay small and a session can never steer another session's tab. A call with no owning session is an error.
-- The panel is served by the host webserver, on the same origin and behind **the same session authentication as the Web UI itself** (`connection.requestRejection`). Every route carries a session id: `GET /api/dsh-browser-panel/state?session=…`, `GET /sessions`, `POST /open|/close|/human-done`, `GET /health`, and the `/stream?session=…` WebSocket upgrade. No extra port, no extra token, no tunnel.
+- The panel is served by the host webserver, on the same origin and behind **the same session authentication as the Web UI itself** (`connection.requestRejection`). The routes that belong to a session carry its id — `GET /api/dsh-browser-panel/state?session=…`, `POST /open|/close` (session in the body), and the `/stream?session=…` WebSocket upgrade — while `GET /sessions` and `GET /health` describe the whole host, and `POST /human-done` settles a request by id. No extra port, no extra token, no tunnel.
 - Human take-over is per session: two sessions can wait on a human at the same time, and a request is delivered only to the panel of its own session.
 - Frames travel as JPEG over one WebSocket; input travels back as small JSON messages. Frames are dropped rather than queued when your connection falls behind.
 - Nothing is written into DSH core: the plugin is one composition row.
@@ -107,7 +107,7 @@ systemctl --user restart dsh-web      # or however you run `dsh web`
    ```
 
 5. Log in, press **我已完成** — the tool call returns, and the AI continues with an authenticated session.
-6. In a second session, open its own browser tab: it is a *different* tab, but it is already logged in, because the profile is shared. Close one session's tab (`browser_panel_close`, or 结束并清理) and reopen it: still logged in.
+6. In a second session, open its own browser tab: it is a *different* tab, but it is already logged in, because the profile is shared. Close one session's tab (`browser_panel_close`, or 结束并清理 / Close tab) and reopen it: still logged in.
 
 ## Configuration
 
