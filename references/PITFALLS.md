@@ -129,7 +129,7 @@ Two mapping bugs shipped in the same fix: pointer coordinates now map through th
 
 **Fix**: activate each target **once**, right after creating or attaching it (`Target.activateTarget` / `Page.bringToFront`). The repair is **permanent**: afterwards a hidden tab (`visibilityState=hidden`, `hasFocus=false`) accepts every input method normally. Do **not** poll `visibilityState` to decide whether input will land — it is not a predictor (see #12 for what actually gates typing).
 
-**Latent, not established**: the production plugin was never observed creating background tabs (it attaches to a page and activates it at launch), so this was a trap waiting to be stepped on rather than the cause of a shipped failure.
+**Latent, and context dependent**: the drop reproduces reliably in a dedicated harness that creates the target in a fresh browser, but **not in every context** — in the plugin's own smoke suite a background-created tab that reused an existing renderer accepted injected input in one run and dropped it in others (see `test/smoke.mjs`, where the pre-activation result is reported as a characterisation rather than asserted). Treat the *invariant* as unconditional anyway: activate every tab once at creation, so the guarantee does not depend on which renderer Chrome happened to reuse.
 
 ## 12. Text insertion is gated on renderer *focus*, not on visibility
 
@@ -150,6 +150,12 @@ Two mapping bugs shipped in the same fix: pointer coordinates now map through th
 - **Polled `Page.captureScreenshot` works on hidden *and* never-activated targets**, at ~130–150 ms per capture (~7 fps), and the content stays fresh. This plugin already uses that call to seed a frame; a per-target poll can serve any number of panels without caring which tab is active. (CPU cost was not measured.)
 - **Separate, non-overlapping windows stream live even when unfocused** (27 + 27 frames / 8 s side by side on a 2880×900 screen); a fully covered window freezes and recovers when uncovered. This needs a virtual screen larger than the window and explicit non-overlapping placement.
 
-**Consequence for per-session designs**: "one Chrome, one tab per session, one live screencast per session" is **not viable**. Either activate the tab whose panel is actually being watched, or poll `captureScreenshot` per panel, or give each session its own window (tiled) or its own browser process.
+**Consequence for per-session designs**: "one Chrome, one tab per session, one live screencast per session" is **not viable**. Either activate the tab whose panel is actually being watched, or poll `captureScreenshot` per panel, or give each session its own window (tiled) or its own browser process. The shipped plugin does the first, with the second as the fallback for panels that do not hold the foreground.
+
+**Serving the fallback well** (measured while building the per-session model):
+
+- `optimizeForSpeed: true` on a **backgrounded** tab averaged **59 ms** per capture against **190 ms** with the default path (same page, same quality) — the flag is what makes polling usable at all.
+- The **first** capture of a backgrounded tab is cold: measured ~2 s, and up to ~8 s in the smoke suite while another tab owned an active screencast, against ~30 ms for every capture after it. So seed a frame when a panel connects (the plugin does) and give the first polled frame a generous budget instead of assuming instant updates.
+- Polling one tab does **not** slow the screencast of another down; the reverse — a live screencast on one tab stalling captures on another — is what the numbers above show.
 
 Also measured: hidden tabs throttle `setInterval` to roughly 0.6–1 tick/s versus ~3.3 on the active tab, so anything on a shared page that depends on fast timers behaves differently once it is not the visible tab.
