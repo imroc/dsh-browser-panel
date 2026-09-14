@@ -94,3 +94,40 @@ ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: id }, Pan
 **Cause**: `Page.startScreencast` only emits frames when the page changes.
 
 **Fix**: seed a fresh `Page.captureScreenshot` frame on connect (and on an explicit `play` request from the toolbar).
+
+## 10. An informational overlay that keeps eating every click
+
+**Symptom**: the page streams in the panel and looks completely alive, but clicking an input does nothing — no console error, no failed request, nothing. Reported as "I can see the login form but I cannot click it".
+
+**Cause**: two client-side bugs compounding. The overlay that reports `starting` / `stopped` / `empty` (`.dbp-overlay`) had no `pointer-events: none`, so it stayed a full-canvas click target sitting on top of the page; and the flag meant to unmount it once frames arrive lived in a **ref**, and a ref does not re-render — so the overlay stayed mounted forever, transparent-looking but click-blocking.
+
+**Fix**: make every overlay click-through, and keep the first-frame gate in React state:
+
+```js
+// style — the overlay must never intercept the pointer
+.dbp-overlay { … ; pointer-events: none }
+
+// component — a ref does not re-render, so the overlay never unmounted
+const [hasFrame, setHasFrame] = useState(false)
+// … in the frame painter: setHasFrame(true)
+// … render gate: !hasFrame && connection === 'connected' ? overlay : null
+```
+
+**How to find it next time**: in the GUI page, evaluate `document.elementFromPoint(x, y)` at the point you clicked. It names the element actually swallowing the event, which is rarely the one you suspected.
+
+Two mapping bugs shipped in the same fix: pointer coordinates now map through the canvas' **intrinsic size** (so they stay correct even when the emulated viewport changes underneath the panel), and stopping the stream no longer clears the device-metrics override (which used to flip the page between 1439×756 and 1440×900 on every reconnect).
+
+## 11. Chrome silently drops injected input in a background tab
+
+**Symptom**: the panel shows a live page, and every `Input.dispatchMouseEvent` / `Input.insertText` call through CDP returns success — but no click lands and no character appears. Nothing is logged, on either side.
+
+**Cause**: Chrome discards CDP-injected input for a page that is not the active tab. The shared page loses the foreground whenever anything else takes it — a stray tab left behind in the persistent profile, or a page that opened one itself (`window.open`, `target="_blank"`). The panel streams the *background* page quite happily, and a background page looks exactly like a working one in a JPEG.
+
+**Fix**: own the foreground, and take it back when it is lost:
+
+- `Target.activateTarget` on the attached page right after launch;
+- expose `hidden` (`document.visibilityState === 'hidden'`) on the status object;
+- on the 2.5s state poll, if the page reports `hidden`, call `ensureActive()` again — self-healing matters because the thief is often the page itself;
+- regression test: steal the foreground with another tab and assert the shared page returns to visible.
+
+**Generalization**: for any "the human sees a live page but the injected input vanishes" report, check `document.visibilityState` *first* — before suspecting coordinates, event synthesis, or the frontend. The CDP calls will keep reporting success either way.
