@@ -115,19 +115,41 @@ const [hasFrame, setHasFrame] = useState(false)
 
 **How to find it next time**: in the GUI page, evaluate `document.elementFromPoint(x, y)` at the point you clicked. It names the element actually swallowing the event, which is rarely the one you suspected.
 
-Two mapping bugs shipped in the same fix: pointer coordinates now map through the canvas' **intrinsic size** (so they stay correct even when the emulated viewport changes underneath the panel), and stopping the stream no longer clears the device-metrics override (which used to flip the page between 1439×756 and 1440×900 on every reconnect).
+**It is the head of a chain, not a standalone bug.** A swallowed click means nothing gains focus, and the *next* `Input.insertText` then dies silently in the focus gate (#12) — with success-shaped responses all the way down. That chain reproduces the original report verbatim ("I can see the login form but I cannot click it"), and it was reproduced on the production binary with a screenshot to prove it.
 
-## 11. Chrome silently drops injected input in a background tab
+Two mapping bugs shipped in the same fix: pointer coordinates now map through the canvas' **intrinsic size** (so they stay correct even when the emulated viewport changes underneath the panel), and stopping the stream no longer clears the device-metrics override (which used to flip the page between 1439×756 and 1440×900 on every reconnect). A stale frame is still dangerous on its own: coordinates read off a frozen picture missed by ~144 px once the page had scrolled underneath (#13).
 
-**Symptom**: the panel shows a live page, and every `Input.dispatchMouseEvent` / `Input.insertText` call through CDP returns success — but no click lands and no character appears. Nothing is logged, on either side.
+## 11. A tab that was never activated silently discards *all* injected input
 
-**Cause**: Chrome discards CDP-injected input for a page that is not the active tab. The shared page loses the foreground whenever anything else takes it — a stray tab left behind in the persistent profile, or a page that opened one itself (`window.open`, `target="_blank"`). The panel streams the *background* page quite happily, and a background page looks exactly like a working one in a JPEG.
+> **Corrected 2026-09-14.** This entry previously claimed *"Chrome silently drops CDP-injected input in a background tab"*. A controlled experiment on the exact production binary (`chromium-1243` = Chrome for Testing 153.0.8010.12, Xvfb, no window manager) could **not** reproduce that claim, and this repo's own regression test only ever asserted that `visibilityState` returns to `visible` — it never asserted that input was lost. The claim was never true as written. What *was* measured is narrower, and is below.
 
-**Fix**: own the foreground, and take it back when it is lost:
+**Symptom**: every `Input.dispatchMouseEvent` / `Input.insertText` / `Input.dispatchKeyEvent` against a target returns success (`{}`) and nothing happens — no click, no character, no focus change, no error, on either side.
 
-- `Target.activateTarget` on the attached page right after launch;
-- expose `hidden` (`document.visibilityState === 'hidden'`) on the status object;
-- on the 2.5s state poll, if the page reports `hidden`, call `ensureActive()` again — self-healing matters because the thief is often the page itself;
-- regression test: steal the foreground with another tab and assert the shared page returns to visible.
+**Cause**: a target created in the background (`Target.createTarget { background: true }`) and **never activated since the browser started** has no input routing at all. Every `Input.*` call is a silent no-op, *regardless of `document.visibilityState`* — and such a page typically reports `visible`, because without a window manager Chrome's visibility signal does not come from X mapping. `Page.startScreencast` yields **zero** frames for it, while `Page.captureScreenshot` still returns a live, correct picture — so a panel can look perfectly alive while the target is deaf.
 
-**Generalization**: for any "the human sees a live page but the injected input vanishes" report, check `document.visibilityState` *first* — before suspecting coordinates, event synthesis, or the frontend. The CDP calls will keep reporting success either way.
+**Fix**: activate each target **once**, right after creating or attaching it (`Target.activateTarget` / `Page.bringToFront`). The repair is **permanent**: afterwards a hidden tab (`visibilityState=hidden`, `hasFocus=false`) accepts every input method normally. Do **not** poll `visibilityState` to decide whether input will land — it is not a predictor (see #12 for what actually gates typing).
+
+**Latent, not established**: the production plugin was never observed creating background tabs (it attaches to a page and activates it at launch), so this was a trap waiting to be stepped on rather than the cause of a shipped failure.
+
+## 12. Text insertion is gated on renderer *focus*, not on visibility
+
+**Symptom**: `Input.insertText` returns `{}` and the field stays empty — while `Input.dispatchKeyEvent` still delivers `keydown` to the document but types nothing. Clicking a `<button>` also leaves `document.activeElement === body` on this build.
+
+**Cause**: `Input.insertText` is a silent no-op unless the target's renderer has a **text-accepting element focused**. This is orthogonal to visibility — measured: it drops on a *visible, focused* tab and lands on a *hidden* one.
+
+**Fix**: click the field first (`Input.dispatchMouseEvent`), then type. And watch for the trap that makes this so hard to read: after a click that was swallowed by something else (#10) the page still flips `document.hasFocus()` to `true`, so every "obvious" focus check reports that all is well.
+
+## 13. `Page.startScreencast` only streams the **active** tab
+
+**Symptom**: with more than one target driven, most panels show a frozen picture (or a single stale frame) while one of them updates at full rate.
+
+**Cause**: measured on the production binary — over 10 s the active tab produced 34 distinct frames, a hidden tab running a continuously animating page produced **1**, and a never-activated tab produced **0**. Concurrent screencasts do not help: active 34, hidden 0.
+
+**Measured alternatives** (same run):
+
+- **Polled `Page.captureScreenshot` works on hidden *and* never-activated targets**, at ~130–150 ms per capture (~7 fps), and the content stays fresh. This plugin already uses that call to seed a frame; a per-target poll can serve any number of panels without caring which tab is active. (CPU cost was not measured.)
+- **Separate, non-overlapping windows stream live even when unfocused** (27 + 27 frames / 8 s side by side on a 2880×900 screen); a fully covered window freezes and recovers when uncovered. This needs a virtual screen larger than the window and explicit non-overlapping placement.
+
+**Consequence for per-session designs**: "one Chrome, one tab per session, one live screencast per session" is **not viable**. Either activate the tab whose panel is actually being watched, or poll `captureScreenshot` per panel, or give each session its own window (tiled) or its own browser process.
+
+Also measured: hidden tabs throttle `setInterval` to roughly 0.6–1 tick/s versus ~3.3 on the active tab, so anything on a shared page that depends on fast timers behaves differently once it is not the visible tab.
