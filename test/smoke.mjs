@@ -194,15 +194,36 @@ try {
   await manager.navigate(`${siteUrl}/login`)
   await sleep(800)
 
+  // Reconnect race: a disconnecting panel used to kill the *next* panel's
+  // screencast (its async teardown stopped the stream the new one had started).
+  client.close()
+  const secondFrames = []
+  const secondMessages = []
+  const reconnected = new WebSocket(wsUrl)
+  reconnected.binaryType = 'arraybuffer'
+  reconnected.onmessage = (event) => {
+    if (typeof event.data === 'string') secondMessages.push(JSON.parse(event.data))
+    else secondFrames.push(Buffer.from(event.data))
+  }
+  await new Promise((resolve, reject) => {
+    reconnected.onopen = resolve
+    reconnected.onerror = () => reject(new Error('reconnect failed'))
+  })
+  await sleep(800)
+  const framesBeforeNav = secondFrames.length
+  await manager.navigate(`${siteUrl}/login`)
+  await sleep(1500)
+  check('stream survives a panel reconnect race', secondFrames.length > framesBeforeNav, `${framesBeforeNav} -> ${secondFrames.length} frames`)
+
   // ------------------------------------------------------- human handover
   const asked = human.ask('请在面板里完成登录', { timeoutMs: 5000 })
   await sleep(200)
-  check('human request is broadcast', messages.some((m) => m.type === 'human-request'))
-  client.send(JSON.stringify({ type: 'human-done', requestId: human.snapshot()?.id }))
+  check('human request is broadcast', secondMessages.some((m) => m.type === 'human-request'))
+  reconnected.send(JSON.stringify({ type: 'human-done', requestId: human.snapshot()?.id }))
   const outcome = await asked
   check('human handover resolves on done', outcome.status === 'done', JSON.stringify(outcome))
   await sleep(150)
-  check('human done is broadcast to panels', messages.some((m) => m.type === 'human-done'))
+  check('human done is broadcast to panels', secondMessages.some((m) => m.type === 'human-done'))
 
   const timeoutOutcome = await human.ask('永远不会点', { timeoutMs: 300 })
   check('human handover times out', timeoutOutcome.status === 'timeout')
