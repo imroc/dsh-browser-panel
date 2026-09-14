@@ -19,12 +19,24 @@ if (GUI_PORT === 0 || SHARED_PORT === 0) {
   process.exit(2)
 }
 
-/** Attach to the newest page target of one DevTools port. */
+/**
+ * Attach to the VISIBLE page target of one DevTools port.
+ *
+ * The plugin guarantees its shared page is the foreground tab (a background tab
+ * makes Chrome drop injected input), so the visible target *is* the shared page;
+ * "the last target" would pick a stray tab.
+ */
 async function attach(port) {
   const cdp = await Cdp.connect(port)
-  const page = await cdp.attachAnyPage()
-  await page.enable()
-  return { cdp, page }
+  const targets = (await cdp.pages()).reverse()
+  for (const target of targets) {
+    const page = await cdp.attach(target.id)
+    await page.enable()
+    const visibility = await page.evaluate('document.visibilityState').catch(() => 'unknown')
+    if (visibility === 'visible') return { cdp, page }
+    await page.close()
+  }
+  throw new Error(`no visible page target on DevTools port ${port}`)
 }
 
 const gui = await attach(GUI_PORT)
